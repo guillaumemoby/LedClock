@@ -32,8 +32,8 @@ const float NINJA_CONTOUR_FACTOR = 1.0f;
 
 RTC_DS3231 rtc;
 
-const char *ssid     = "Bbox-E0150BBA";
-const char *password = "iE4xkMPhdb94PU626F";
+const char *ssid     = "NOM WIFI";
+const char *password = "COE WIFI";
 
 WebServer server(80);
 
