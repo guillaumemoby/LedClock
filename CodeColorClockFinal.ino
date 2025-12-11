@@ -32,8 +32,17 @@ const float NINJA_CONTOUR_FACTOR = 1.0f;
 
 RTC_DS3231 rtc;
 
-const char *ssid     = "NOM WIFI";
-const char *password = "COE WIFI";
+// --- WIFI : 2 réseaux possibles ---
+// Réseau principal
+const char *ssid1     = "Bbox-E0150BBA";
+const char *password1 = "iE4xkMPhdb94PU626F";
+
+// Réseau secondaire
+const char *ssid2     = "MOBY MOBY";
+const char *password2 = "ultimate";
+
+// Pour garder une trace du réseau utilisé
+const char *currentSsid = nullptr;
 
 WebServer server(80);
 
@@ -41,7 +50,7 @@ Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 // Luminosité logique (en %)
 int matrixBrightnessPercent  = 4;   // matrice : 4 % par défaut
-int contourBrightnessPercent = 22;  // contour (LED heure) : 75 % du max par défaut
+int contourBrightnessPercent = 22;  // contour (LED heure)
 
 // --------- MATRICE 34 LIGNES ---------
 const int nbRows = 34;
@@ -158,7 +167,6 @@ uint8_t RGB_array[24][2][3] = {
     {{0, 77, 153},    {86, 124, 158}}
 };
 
-
 // Pour arc-en-ciel continu
 int rainbowOffset = 0;
 
@@ -193,6 +201,71 @@ inline uint32_t makeMatrixColor(uint8_t r, uint8_t g, uint8_t b) {
 bool parseHexColor(const String &hex, int &r, int &g, int &b);
 
 // ====================================================================
+// WIFI : fonctions de connexion
+// ====================================================================
+bool connectTo(const char *ssid, const char *password, unsigned long timeoutMs = 12000)
+{
+    Serial.print("Connexion à ");
+    Serial.println(ssid);
+
+    WiFi.begin(ssid, password);
+
+    unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < timeoutMs)
+    {
+        Serial.print(".");
+        delay(300);
+    }
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        Serial.println("\nConnecté !");
+        currentSsid = ssid;
+        return true;
+    }
+    else
+    {
+        Serial.println("\nÉchec de connexion.");
+        return false;
+    }
+}
+
+void connectWiFi()
+{
+    Serial.println("=== Tentative de connexion WiFi ===");
+
+    // 1) On tente d'abord la Bbox
+    if (connectTo(ssid2, password2))
+    {
+        // OK, on reste sur Bbox
+    }
+    else
+    {
+        // 2) Sinon on tente MOBY MOBY
+        Serial.println("Essai sur le réseau secondaire : MOBY MOBY");
+        connectTo(ssid1, password1);
+    }
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        Serial.println();
+        Serial.print("Connexion établie sur : ");
+        Serial.println(currentSsid);
+
+        Serial.print("Adresse IP: ");
+        Serial.println(WiFi.localIP());
+        Serial.println();
+        Serial.print("Accédez à la page web ici : http://");
+        Serial.print(WiFi.localIP());
+        Serial.println("/");
+    }
+    else
+    {
+        Serial.println("⚠ Impossible de se connecter à aucun réseau WiFi.");
+    }
+}
+
+// ====================================================================
 // PAGE HTML
 // ====================================================================
 String getHtmlContent()
@@ -217,9 +290,9 @@ String getHtmlContent()
     html += "#customColorsSection { display:none; margin-top:10px; }";
     html += "</style>";
     html += "<script>";
-    html += "var clickedButton = null;";  // IMPORTANT : var (et pas let) pour être global
+    html += "var clickedButton = null;";
 
-    // Envoi normal du formulaire (pour les boutons Modes, luminosité, etc.)
+    // Envoi normal du formulaire
     html += "function sendForm(event) {";
     html += "  event.preventDefault();";
     html += "  let form = event.target;";
@@ -344,206 +417,204 @@ String getHtmlContent()
     html += "Lancer le compte à rebours";
     html += "</button>";
 
+    // ---------- COULEURS (24 thèmes) ----------
+    html += "<hr>";
+    html += "<h3 class=\"mb-3\">Couleurs (par heure)</h3>";
+    html += "<div class=\"row\">";
 
-// ---------- COULEURS (24 thèmes) ----------
-html += "<hr>";
-html += "<h3 class=\"mb-3\">Couleurs (par heure)</h3>";
-html += "<div class=\"row\">";
+    // H0 : {217,242,0} , {0,77,153}
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#D9F200','#004D99')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#D9F200;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#004D99;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H0</div></button></div>";
 
-// H0 : {217,242,0} , {0,77,153}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#D9F200','#004D99')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#D9F200;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#004D99;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H0</div></button></div>";
+    // H1
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#FF51D0','#D9F200')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#FF51D0;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#D9F200;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H1</div></button></div>";
 
-// H1 : {255,81,208} , {217,242,0}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#FF51D0','#D9F200')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#FF51D0;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#D9F200;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H1</div></button></div>";
+    // H2
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#00932F','#FF51D0')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#00932F;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#FF51D0;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H2</div></button></div>";
 
-// H2 : {0,147,47} , {255,81,208}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#00932F','#FF51D0')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#00932F;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#FF51D0;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H2</div></button></div>";
+    // H3
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#999999','#00932F')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#999999;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#00932F;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H3</div></button></div>";
 
-// H3 : {153,153,153} , {0,147,47}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#999999','#00932F')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#999999;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#00932F;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H3</div></button></div>";
+    // H4
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#FFB600','#999999')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#FFB600;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#999999;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H4</div></button></div>";
 
-// H4 : {255,182,0} , {153,153,153}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#FFB600','#999999')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#FFB600;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#999999;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H4</div></button></div>";
+    // H5
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#4C0099','#FFB600')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#4C0099;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#FFB600;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H5</div></button></div>";
 
-// H5 : {76,0,153} , {255,182,0}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#4C0099','#FFB600')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#4C0099;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#FFB600;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H5</div></button></div>";
+    // H6
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#F27900','#4C0099')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#F27900;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#4C0099;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H6</div></button></div>";
 
-// H6 : {242,121,0} , {76,0,153}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#F27900','#4C0099')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#F27900;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#4C0099;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H6</div></button></div>";
+    // H7
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#999999','#F27900')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#999999;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#F27900;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H7</div></button></div>";
 
-// H7 : {153,153,153} , {242,121,0}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#999999','#F27900')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#999999;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#F27900;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H7</div></button></div>";
+    // H8
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#00661A','#999999')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#00661A;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#999999;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H8</div></button></div>";
 
-// H8 : {0,102,26} , {153,153,153}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#00661A','#999999')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#00661A;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#999999;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H8</div></button></div>";
+    // H9
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#260099','#00661A')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#260099;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#00661A;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H9</div></button></div>";
 
-// H9 : {38,0,153} , {0,102,26}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#260099','#00661A')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#260099;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#00661A;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H9</div></button></div>";
+    // H10
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#B200B2','#260099')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#B200B2;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#260099;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H10</div></button></div>";
 
-// H10 : {178,0,178} , {38,0,153}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#B200B2','#260099')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#B200B2;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#260099;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H10</div></button></div>";
+    // H11
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#004D99','#B200B2')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#004D99;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#B200B2;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H11</div></button></div>";
 
-// H11 : {0,77,153} , {178,0,178}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#004D99','#B200B2')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#004D99;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#B200B2;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H11</div></button></div>";
+    // H12
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#F89DFF','#004D99')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#F89DFF;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#004D99;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H12</div></button></div>";
 
-// H12 : {248,157,255} , {0,77,153}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#F89DFF','#004D99')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#F89DFF;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#004D99;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H12</div></button></div>";
+    // H13
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#D9F200','#F89DFF')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#D9F200;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#F89DFF;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H13</div></button></div>";
 
-// H13 : {217,242,0} , {248,157,255}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#D9F200','#F89DFF')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#D9F200;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#F89DFF;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H13</div></button></div>";
+    // H14
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#00932F','#D9F200')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#00932F;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#D9F200;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H14</div></button></div>";
 
-// H14 : {0,147,47} , {217,242,0}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#00932F','#D9F200')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#00932F;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#D9F200;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H14</div></button></div>";
+    // H15
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#39A6E5','#00932F')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#39A6E5;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#00932F;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H15</div></button></div>";
 
-// H15 : {57,166,229} , {0,147,47}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#39A6E5','#00932F')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#39A6E5;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#00932F;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H15</div></button></div>";
+    // H16
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#FF9723','#39A6E5')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#FF9723;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#39A6E5;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H16</div></button></div>";
 
-// H16 : {255,151,35} , {57,166,229}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#FF9723','#39A6E5')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#FF9723;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#39A6E5;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H16</div></button></div>";
+    // H17
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#4C0099','#FF9723')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#4C0099;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#FF9723;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H17</div></button></div>";
 
-// H17 : {76,0,153} , {255,151,35}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#4C0099','#FF9723')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#4C0099;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#FF9723;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H17</div></button></div>";
+    // H18
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#F27900','#4C0099')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#F27900;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#4C0099;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H18</div></button></div>";
 
-// H18 : {242,121,0} , {76,0,153}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#F27900','#4C0099')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#F27900;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#4C0099;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H18</div></button></div>";
+    // H19
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#999999','#F27900')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#999999;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#F27900;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H19</div></button></div>";
 
-// H19 : {153,153,153} , {242,121,0}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#999999','#F27900')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#999999;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#F27900;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H19</div></button></div>";
+    // H20
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#00661A','#999999')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#00661A;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#999999;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H20</div></button></div>";
 
-// H20 : {0,102,26} , {153,153,153}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#00661A','#999999')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#00661A;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#999999;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H20</div></button></div>";
+    // H21
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#260099','#00661A')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#260099;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#00661A;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H21</div></button></div>";
 
-// H21 : {38,0,153} , {0,102,26}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#260099','#00661A')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#260099;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#00661A;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H21</div></button></div>";
+    // H22
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#567C9E','#260099')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#567C9E;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#260099;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H22</div></button></div>";
 
-// H22 : {86,124,158} , {38,0,153}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#567C9E','#260099')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#567C9E;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#260099;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H22</div></button></div>";
+    // H23
+    html += "<div class=\"col-6\">";
+    html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#004D99','#567C9E')\">";
+    html += "<div class=\"palette-colors\">";
+    html += "<div class=\"palette-color-block\" style=\"background:#004D99;\"></div>";
+    html += "<div class=\"palette-color-block\" style=\"background:#567C9E;\"></div>";
+    html += "</div><div class=\"palette-label text-center\">H23</div></button></div>";
 
-// H23 : {0,77,153} , {86,124,158}
-html += "<div class=\"col-6\">";
-html += "<button type=\"button\" class=\"palette-btn\" onclick=\"selectTheme('#004D99','#567C9E')\">";
-html += "<div class=\"palette-colors\">";
-html += "<div class=\"palette-color-block\" style=\"background:#004D99;\"></div>";
-html += "<div class=\"palette-color-block\" style=\"background:#567C9E;\"></div>";
-html += "</div><div class=\"palette-label text-center\">H23</div></button></div>";
-
-html += "</div>"; // fin row
-
+    html += "</div>"; // fin row
 
     // ---------- COULEURS PERSONNALISÉES ----------
     html += "<div class=\"text-center mt-2\">";
@@ -612,9 +683,11 @@ void setup()
         Serial.println("Couldn't find RTC");
     }
 
+    // ⚠️ On ne remet plus l'heure automatiquement.
+    // Si la RTC a perdu l'alim, on prévient juste dans le Serial.
     if (rtc.lostPower())
     {
-        rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+        Serial.println("RTC a perdu l'alimentation. Régler l'heure via la page web (bouton 'Régler l'heure exacte').");
     }
 
     IRState = 1;
@@ -622,22 +695,8 @@ void setup()
     pinMode(playbackPin, OUTPUT);
     digitalWrite(playbackPin, HIGH); // état repos
 
-    WiFi.begin(ssid, password);
-    Serial.print("Attente de connexion ...");
-    while (WiFi.status() != WL_CONNECTED)
-    {
-        Serial.print(".");
-        delay(100);
-    }
-
-    Serial.println("\n");
-    Serial.println("Connexion etablie !");
-    Serial.print("Adresse IP: ");
-    Serial.println(WiFi.localIP());
-    Serial.println();
-    Serial.print("Accédez à la page web ici : http://");
-    Serial.print(WiFi.localIP());
-    Serial.println("/");
+    // Connexion WiFi (Bbox d'abord, puis MOBY MOBY en secours)
+    connectWiFi();
 
     server.on("/", []()
               { server.send(200, "text/html", getHtmlContent()); });
@@ -839,23 +898,28 @@ void colorchange()
         }
     }
 
-    // --- 2) CONTOUR : LED de l'heure en version boostée de customColor1 ---
+    // --- 2) On nettoie TOUT le contour avant d'allumer la LED d'heure ---
+    for (int i = contourStartIndex; i < contourStartIndex + CONTOUR_LEDS; i++)
+    {
+        strip.setPixelColor(i, 0); // off
+    }
+
+    // --- 3) CONTOUR : LED de l'heure en version boostée de customColor1 ---
     int hour24 = now.hour();        // 0..23
     int hour12 = hour24 % 12;       // 0..11
-    int hourIdx;
 
-    if (hour12 == 0)
-        hourIdx = 12;               // 0h / 12h -> 12
-    else
-        hourIdx = hour12;           // 1..11
+    int contourLedIndex;
 
-    int markerIndex = hourIdx;
+    // 0h / 12h -> première LED de repère
+    if (hour12 == 0) {
+        contourLedIndex = contourStartIndex + 2;
+    } else {
+        // 1h..11h -> même logique qu'avant (espacement de 6 LEDs)
+        contourLedIndex = contourStartIndex + 2 + hour12 * 6;
+    }
 
-    int contourLedIndex = contourStartIndex + 2 + markerIndex * 6;
-
-    if (contourLedIndex >= contourStartIndex + CONTOUR_LEDS)
-    {
-        contourLedIndex -= 12 * 6;
+    if (contourLedIndex >= contourStartIndex + CONTOUR_LEDS) {
+        contourLedIndex = contourStartIndex + 2;
     }
 
     if (contourLedIndex >= contourStartIndex &&
@@ -885,7 +949,16 @@ void colorchange()
         if (cG > 255) cG = 255;
         if (cB > 255) cB = 255;
 
-        strip.setPixelColor(contourLedIndex, strip.Color((uint8_t)cR, (uint8_t)cG, (uint8_t)cB));
+        for (int offset = -3; offset <= 3; offset++)
+        {
+            int idx = contourLedIndex + offset;
+
+            if (idx >= contourStartIndex &&
+                idx < contourStartIndex + CONTOUR_LEDS)
+            {
+                strip.setPixelColor(idx, strip.Color((uint8_t)cR, (uint8_t)cG, (uint8_t)cB));
+            }
+        }
     }
 
     strip.show();
@@ -1238,24 +1311,28 @@ void twoColors()
         }
     }
 
-    // --- 2) CONTOUR : LED pour l’heure, boostée selon contourBrightnessPercent ---
+    // --- 2) On nettoie TOUT le contour avant d'allumer la LED d'heure ---
+    for (int i = contourStartIndex; i < contourStartIndex + CONTOUR_LEDS; i++)
+    {
+        strip.setPixelColor(i, 0); // off
+    }
 
+    // --- 3) CONTOUR : LED pour l’heure, boostée selon contourBrightnessPercent ---
     int hour24 = now.hour();        // 0..23
     int hour12 = hour24 % 12;       // 0..11
-    int hourIdx;
 
-    if (hour12 == 0)
-        hourIdx = 12;               // 0h / 12h -> 12
-    else
-        hourIdx = hour12;           // 1..11
+    int contourLedIndex;
 
-    int markerIndex = hourIdx;
+    // 0h / 12h -> première LED de repère
+    if (hour12 == 0) {
+        contourLedIndex = contourStartIndex + 2;
+    } else {
+        // 1h..11h -> même logique qu'avant (espacement de 6 LEDs)
+        contourLedIndex = contourStartIndex + 2 + hour12 * 6;
+    }
 
-    int contourLedIndex = contourStartIndex + 2 + markerIndex * 6;
-
-    if (contourLedIndex >= contourStartIndex + CONTOUR_LEDS)
-    {
-        contourLedIndex -= 12 * 6;
+    if (contourLedIndex >= contourStartIndex + CONTOUR_LEDS) {
+        contourLedIndex = contourStartIndex + 2;
     }
 
     if (contourLedIndex >= contourStartIndex &&
@@ -1284,7 +1361,16 @@ void twoColors()
         if (cG > 255) cG = 255;
         if (cB > 255) cB = 255;
 
-        strip.setPixelColor(contourLedIndex, strip.Color((uint8_t)cR, (uint8_t)cG, (uint8_t)cB));
+        for (int offset = -3; offset <= 3; offset++)
+        {
+            int idx = contourLedIndex + offset;
+
+            if (idx >= contourStartIndex &&
+                idx < contourStartIndex + CONTOUR_LEDS)
+            {
+                strip.setPixelColor(idx, strip.Color((uint8_t)cR, (uint8_t)cG, (uint8_t)cB));
+            }
+        }
     }
 
     strip.show();
@@ -1384,24 +1470,26 @@ void ninjaClock()
         }
     }
 
-    // --------- 2) CONTOUR : LED de l'heure en bleu, FIXE à 40 % du max possible ----------
+    // --------- 2) On nettoie tout le contour ----------
+    for (int i = contourStartIndex; i < contourStartIndex + CONTOUR_LEDS; i++)
+    {
+        strip.setPixelColor(i, 0);
+    }
 
+    // --------- 3) CONTOUR : LED de l'heure en bleu ----------
     int hour24 = now.hour();        // 0..23
     int hour12 = hour24 % 12;       // 0..11
-    int hourIdx;
 
-    if (hour12 == 0)
-        hourIdx = 12;               // 0h / 12h -> 12
-    else
-        hourIdx = hour12;           // 1..11
+    int contourLedIndex;
 
-    int markerIndex = hourIdx;
+    if (hour12 == 0) {
+        contourLedIndex = contourStartIndex + 2;
+    } else {
+        contourLedIndex = contourStartIndex + 2 + hour12 * 6;
+    }
 
-    int contourLedIndex = contourStartIndex + 2 + markerIndex * 6;
-
-    if (contourLedIndex >= contourStartIndex + CONTOUR_LEDS)
-    {
-        contourLedIndex -= 12 * 6;
+    if (contourLedIndex >= contourStartIndex + CONTOUR_LEDS) {
+        contourLedIndex = contourStartIndex + 2;
     }
 
     if (contourLedIndex >= contourStartIndex &&
@@ -1416,7 +1504,7 @@ void ninjaClock()
 
         float maxFactorNoClip = 255.0f / (float)maxBase;
 
-        // Contour bloqué à 40 % du max possible, indépendamment du slider
+        // Contour bloqué à 10 % du max possible (tu peux ajuster)
         float userFactor = 0.10f;
         if (userFactor < 0.0f) userFactor = 0.0f;
         if (userFactor > 1.0f) userFactor = 1.0f;
